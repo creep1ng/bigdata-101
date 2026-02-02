@@ -1,0 +1,10 @@
+MapReduce is a programming model and an associated implementation for processing and generating large data sets.
+Users specify a map function that processes a key value pair to generate a set of intermediate key value pairs.
+A reduce function merges all intermediate values associated with the same intermediate key.
+Programs written in this functional style are automatically parallelized and executed on a large cluster of commodity machines.
+The run-time system takes care of the details of partitioning the input data, scheduling the program execution across a set of machines.
+Handling machine failures and managing the required inter-machine communication.
+This allows programmers without any experience with parallel and distributed systems to easily utilize the resources of a large distributed system.
+MapReduce was originally developed by Google and has become a fundamental tool in big data processing.
+The simplicity of the MapReduce model allows it to be applied to a wide variety of problems.
+Common applications include distributed grep, distributed sort, web link-graph reversal, term-vector per host, web access log stats, inverted index construction, and document clustering.
