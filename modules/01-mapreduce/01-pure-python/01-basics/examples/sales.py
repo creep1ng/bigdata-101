@@ -4,6 +4,10 @@ Sales analysis using MapReduce.
 Calculates total sales by product.
 """
 
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
 from mapreduce_framework import mapreduce, print_results
 
 

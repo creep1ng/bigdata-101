@@ -1,28 +1,60 @@
 """
-Parallel MapReduce with Simulated HDFS
+Parallel MapReduce with Real Multiprocessing
 
-Simulates distributed MapReduce processing with:
-- Data stored in simulated HDFS (blocks across nodes)
-- Parallel map tasks (using multiprocessing)
-- Shuffle and sort phase
-- Parallel reduce tasks
+Works on Windows, macOS, and Linux by using proper multiprocessing patterns.
 """
 
 import multiprocessing as mp
 from collections import defaultdict
-from typing import Callable, List, Tuple, Any
+from typing import List, Tuple, Any
 import time
+import os
+
+
+# Global mapper and reducer (needed for multiprocessing serialization)
+_global_mapper = None
+_global_reducer = None
+
+
+def _init_worker_map(mapper):
+    """Initialize worker with mapper function."""
+    global _global_mapper
+    _global_mapper = mapper
+
+
+def _init_worker_reduce(reducer):
+    """Initialize worker with reducer function."""
+    global _global_reducer
+    _global_reducer = reducer
+
+
+def _map_task(args):
+    """Execute a single map task."""
+    task_id, chunk = args
+    results = []
+    for item in chunk:
+        results.extend(_global_mapper(item))
+    return (task_id, results)
+
+
+def _reduce_task(args):
+    """Execute a single reduce task."""
+    task_id, partition = args
+    results = {}
+    for key, values in partition:
+        results[key] = _global_reducer(key, values)
+    return (task_id, results)
 
 
 def parallel_mapreduce(
     data: List[Any],
-    mapper: Callable[[Any], List[Tuple[Any, Any]]],
-    reducer: Callable[[Any, List[Any]], Any],
+    mapper,
+    reducer,
     num_mappers: int = 4,
     num_reducers: int = 2
 ) -> dict:
     """
-    Execute MapReduce with parallel processing.
+    Execute MapReduce with real parallel processing.
     
     Args:
         data: List of items to process
@@ -46,24 +78,22 @@ def parallel_mapreduce(
     print("[PHASE 1] MAP - Parallel Execution")
     start_time = time.time()
     
-    # Split data into chunks for parallel processing
-    chunk_size = len(data) // num_mappers
+    # Split data into chunks
+    chunk_size = max(1, len(data) // num_mappers)
     chunks = [data[i:i + chunk_size] for i in range(0, len(data), chunk_size)]
     
     # Execute map tasks in parallel
-    with mp.Pool(processes=num_mappers) as pool:
-        map_results = pool.starmap(
-            _map_task,
-            [(i, chunk, mapper) for i, chunk in enumerate(chunks)]
-        )
+    with mp.Pool(processes=num_mappers, initializer=_init_worker_map, initargs=(mapper,)) as pool:
+        map_results = pool.map(_map_task, [(i, chunk) for i, chunk in enumerate(chunks)])
     
     # Flatten results
     mapped = []
-    for result in map_results:
-        mapped.extend(result)
+    for task_id, results in sorted(map_results):
+        print(f"  [Map Task {task_id}] Produced {len(results)} key-value pairs")
+        mapped.extend(results)
     
     map_time = time.time() - start_time
-    print(f"  Mapped {len(data)} records -> {len(mapped)} key-value pairs")
+    print(f"  Total: {len(data)} records -> {len(mapped)} key-value pairs")
     print(f"  Time: {map_time:.3f}s\n")
     
     # PHASE 2: SHUFFLE AND SORT
@@ -92,19 +122,17 @@ def parallel_mapreduce(
     start_time = time.time()
     
     # Execute reduce tasks in parallel
-    with mp.Pool(processes=num_reducers) as pool:
-        reduce_results = pool.starmap(
-            _reduce_task,
-            [(i, partition, reducer) for i, partition in enumerate(reducer_partitions)]
-        )
+    with mp.Pool(processes=num_reducers, initializer=_init_worker_reduce, initargs=(reducer,)) as pool:
+        reduce_results = pool.map(_reduce_task, [(i, partition) for i, partition in enumerate(reducer_partitions)])
     
     # Merge results
     final_results = {}
-    for result in reduce_results:
-        final_results.update(result)
+    for task_id, results in sorted(reduce_results):
+        print(f"  [Reduce Task {task_id}] Produced {len(results)} results")
+        final_results.update(results)
     
     reduce_time = time.time() - start_time
-    print(f"  Reduced to {len(final_results)} final results")
+    print(f"  Total: {len(final_results)} final results")
     print(f"  Time: {reduce_time:.3f}s\n")
     
     # SUMMARY
@@ -121,57 +149,47 @@ def parallel_mapreduce(
     return final_results
 
 
-def _map_task(task_id: int, data: List[Any], mapper: Callable) -> List[Tuple[Any, Any]]:
-    """Execute a single map task."""
-    print(f"  [Map Task {task_id}] Processing {len(data)} records...")
-    results = []
-    for item in data:
-        results.extend(mapper(item))
-    print(f"  [Map Task {task_id}] Produced {len(results)} key-value pairs")
-    return results
+# Define mapper and reducer at module level for serialization
+def word_mapper(line):
+    """Map function for word count."""
+    words = line.lower().split()
+    return [(word.strip('.,!?;:"()[]{}'), 1) for word in words if word.strip('.,!?;:"()[]{}')]
 
 
-def _reduce_task(task_id: int, partition: List[Tuple[Any, List[Any]]], reducer: Callable) -> dict:
-    """Execute a single reduce task."""
-    print(f"  [Reduce Task {task_id}] Processing {len(partition)} keys...")
-    results = {}
-    for key, values in partition:
-        results[key] = reducer(key, values)
-    print(f"  [Reduce Task {task_id}] Produced {len(results)} results")
-    return results
+def word_reducer(key, values):
+    """Reduce function for word count."""
+    return sum(values)
 
 
 if __name__ == "__main__":
-    # Example: Word count with parallel processing
+    import sys
     
-    def mapper(line):
-        """Map function for word count."""
-        words = line.lower().split()
-        return [(word.strip('.,!?;:"()[]{}'), 1) for word in words if word.strip('.,!?;:"()[]{}')]
+    # Check command line arguments
+    if len(sys.argv) < 2:
+        print("Usage: python parallel_mapreduce.py <filename>")
+        print("\nExample:")
+        print("  python parallel_mapreduce.py ../../../../datasets/book/The\\ story\\ of\\ the\\ universe.txt")
+        sys.exit(1)
     
-    def reducer(key, values):
-        """Reduce function for word count."""
-        return sum(values)
+    filename = sys.argv[1]
     
-    # Generate sample data
-    text = [
-        "MapReduce is a programming model for processing large data sets",
-        "The MapReduce framework consists of map and reduce functions",
-        "Map functions process input data and produce intermediate results",
-        "Reduce functions aggregate intermediate results to produce final output",
-        "Parallel processing enables MapReduce to handle big data efficiently",
-        "Data locality is important in MapReduce for performance optimization",
-        "The shuffle phase redistributes data between map and reduce tasks",
-        "MapReduce can process terabytes of data across thousands of machines",
-    ] * 100  # Repeat to simulate larger dataset
+    # Check if file exists
+    if not os.path.exists(filename):
+        print(f"Error: File not found: {filename}")
+        sys.exit(1)
+    
+    # Read file
+    print(f"Reading file: {filename}")
+    with open(filename, 'r', encoding='utf-8') as f:
+        text = [line.strip() for line in f if line.strip()]
     
     print(f"Dataset size: {len(text)} lines")
     
     # Execute parallel MapReduce
     results = parallel_mapreduce(
         text,
-        mapper,
-        reducer,
+        word_mapper,
+        word_reducer,
         num_mappers=4,
         num_reducers=2
     )

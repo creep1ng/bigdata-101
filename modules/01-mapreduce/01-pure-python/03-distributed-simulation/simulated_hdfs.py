@@ -12,7 +12,7 @@ from pathlib import Path
 class SimulatedHDFS:
     """Simulates Hadoop Distributed File System locally."""
     
-    def __init__(self, base_dir="hdfs_storage", block_size=1024, replication=3):
+    def __init__(self, base_dir="hdfs_storage", block_size=1024, replication=3, num_nodes=6):
         """
         Initialize simulated HDFS.
         
@@ -20,15 +20,17 @@ class SimulatedHDFS:
             base_dir: Directory to store HDFS data
             block_size: Size of each block in bytes
             replication: Number of replicas for each block
+            num_nodes: Total number of nodes in the cluster
         """
         self.base_dir = Path(base_dir)
         self.block_size = block_size
         self.replication = replication
+        self.num_nodes = num_nodes
         self.metadata_file = self.base_dir / "metadata.json"
         
-        # Create HDFS structure
+        # Create HDFS structure with multiple nodes
         self.base_dir.mkdir(exist_ok=True)
-        for i in range(replication):
+        for i in range(num_nodes):
             (self.base_dir / f"node_{i}").mkdir(exist_ok=True)
         
         # Load or initialize metadata
@@ -54,6 +56,8 @@ class SimulatedHDFS:
             local_file: Path to local file
             hdfs_path: Destination path in HDFS
         """
+        import random
+        
         print(f"\n[HDFS] Uploading {local_file} to {hdfs_path}")
         
         # Read file content
@@ -67,9 +71,14 @@ class SimulatedHDFS:
             block_data = content[i:i + self.block_size]
             block_name = f"{hdfs_path.replace('/', '_')}_block_{block_id}"
             
-            # Replicate block across nodes
+            # Select random nodes for this block (simulating HDFS placement)
+            # Each block goes to different set of nodes
+            available_nodes = list(range(self.num_nodes))
+            selected_nodes = random.sample(available_nodes, min(self.replication, self.num_nodes))
+            
+            # Replicate block across selected nodes
             replicas = []
-            for node_id in range(self.replication):
+            for node_id in selected_nodes:
                 node_dir = self.base_dir / f"node_{node_id}"
                 block_path = node_dir / block_name
                 
@@ -146,22 +155,50 @@ class SimulatedHDFS:
 
 
 if __name__ == "__main__":
-    # Demo
-    hdfs = SimulatedHDFS(block_size=512, replication=3)
+    import sys
     
-    # Create a sample file
-    sample_file = "test_file.txt"
-    with open(sample_file, 'w') as f:
-        f.write("This is a test file for HDFS simulation.\n" * 50)
+    # Initialize HDFS
+    hdfs = SimulatedHDFS(block_size=8192, replication=3, num_nodes=6)
     
-    # Upload to HDFS
-    hdfs.put(sample_file, "/user/data/test.txt")
-    
-    # Get file info
-    hdfs.get_info("/user/data/test.txt")
-    
-    # List files
-    print(f"\n[HDFS] Files: {hdfs.list_files()}")
-    
-    # Clean up
-    os.remove(sample_file)
+    if len(sys.argv) > 1:
+        # User provided file(s)
+        for file_path in sys.argv[1:]:
+            if not os.path.exists(file_path):
+                print(f"Error: File not found: {file_path}")
+                continue
+            
+            file_name = os.path.basename(file_path)
+            hdfs_path = f"/user/data/{file_name}"
+            
+            # Upload to HDFS
+            hdfs.put(file_path, hdfs_path)
+            
+            # Get file info
+            hdfs.get_info(hdfs_path)
+        
+        # List all files
+        print(f"\n[HDFS] All files: {hdfs.list_files()}")
+    else:
+        # Demo mode - create sample file
+        print("Demo mode: Creating sample file...")
+        print("Usage: python simulated_hdfs.py <file1> [file2] ...\n")
+        
+        sample_file = "test_file.txt"
+        with open(sample_file, 'w') as f:
+            f.write("This is a test file for HDFS simulation.\n" * 50)
+        
+        # Upload to HDFS
+        hdfs.put(sample_file, "/user/data/test.txt")
+        
+        # Get file info
+        hdfs.get_info("/user/data/test.txt")
+        
+        # List files
+        print(f"\n[HDFS] Files: {hdfs.list_files()}")
+        
+        # Clean up
+        os.remove(sample_file)
+        
+        print("\nTo use with your own files:")
+        print("  python simulated_hdfs.py myfile.txt")
+        print("  python simulated_hdfs.py file1.txt file2.txt")
