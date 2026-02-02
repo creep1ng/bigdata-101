@@ -1,98 +1,106 @@
 # MapReduce with Pure Python
 
-## Concept
+## Overview
 
-Basic MapReduce implementation using only native Python functions to understand the paradigm without external dependencies.
-
-## Basic Components
-
-### 1. Map Function
-Transforms each input element into one or more (key, value) pairs.
-
-### 2. Shuffle/Sort Function
-Groups all values that have the same key.
-
-### 3. Reduce Function
-Processes all values associated with each key and produces a result.
+Learn MapReduce from the ground up with pure Python implementations. This module is organized in three progressive levels, each building on the previous one.
 
 ## Learning Path
 
-Follow this order to understand MapReduce progressively:
+### Level 1: Basics (`01-basics/`)
+**Goal**: Understand core MapReduce concepts with simple examples
 
-### 1. Framework ([`mapreduce_framework.py`](mapreduce_framework.py))
-Start here to understand the core MapReduce implementation.
-- Contains the main `mapreduce()` function
-- Implements Map, Shuffle/Sort, and Reduce phases
-- Provides utility functions for displaying results
-- This is the foundation for all other examples
+Start here to learn the fundamentals:
+- [`mapreduce_framework.py`](01-basics/mapreduce_framework.py) - Core MapReduce implementation
+- [`wordcount.py`](01-basics/wordcount.py) - Classic WordCount with inline data
+- [`examples/sales.py`](01-basics/examples/sales.py) - Business data analysis
+- [`examples/logs.py`](01-basics/examples/logs.py) - Log file analysis
 
-### 2. Basic Example ([`wordcount.py`](wordcount.py))
-Classic WordCount example with inline text data.
-- Simplest possible example
-- Data is defined directly in the code
-- Perfect for understanding mapper and reducer functions
-- Run: `python wordcount.py`
-
-### 3. Single File Processing ([`wordcount_file.py`](wordcount_file.py))
-WordCount reading from a text file.
-- Introduces file I/O operations
-- Processes one file at a time
-- Shows how to handle command-line arguments
-- Run: `python wordcount_file.py sample_text.txt`
-
-### 4. Multiple File Processing ([`wordcount_multifile.py`](wordcount_multifile.py))
-Advanced example processing multiple files.
-- Reads all .txt files from a directory
-- Tracks which files contain each word
-- More realistic Big Data scenario
-- Run: `python wordcount_multifile.py .`
-
-### 5. Practical Examples (`examples/`)
-Real-world use cases beyond text processing:
-
-#### [`sales.py`](examples/sales.py) - Sales Analysis
-- Processes structured data (dictionaries)
-- Calculates total sales by product
-- Shows MapReduce with business data
-- Run: `python examples/sales.py`
-
-#### [`logs.py`](examples/logs.py) - Log Analysis
-- Analyzes system logs
-- Counts events by severity level
-- Common use case in production systems
-- Run: `python examples/logs.py`
-
-## Sample Data Files
-
-- [`sample_text.txt`](sample_text.txt): Text about MapReduce concepts
-- [`sample_bigdata.txt`](sample_bigdata.txt): Text about Big Data technologies
-
-## Quick Start
+**Key Concepts**: Map function, Reduce function, Shuffle/Sort phase
 
 ```bash
-# 1. Start with the basic example
+cd 01-basics
 python wordcount.py
-
-# 2. Try processing a file
-python wordcount_file.py sample_text.txt
-
-# 3. Process multiple files
-python wordcount_multifile.py .
-
-# 4. Explore practical examples
 python examples/sales.py
 python examples/logs.py
 ```
 
-## Advantages of this Approach
+---
 
-- No additional installations required
-- Transparent and easy-to-debug code
-- Perfect for understanding data flow
-- Foundation for understanding more complex implementations
+### Level 2: File Processing (`02-file-processing/`)
+**Goal**: Process real files and handle multiple data sources
+
+Learn to work with actual files:
+- [`wordcount_file.py`](02-file-processing/wordcount_file.py) - Process single text file
+- [`wordcount_multifile.py`](02-file-processing/wordcount_multifile.py) - Process multiple files
+- [`sample_text.txt`](02-file-processing/sample_text.txt) - Sample data about MapReduce
+- [`sample_bigdata.txt`](02-file-processing/sample_bigdata.txt) - Sample data about Big Data
+
+**Key Concepts**: File I/O, batch processing, aggregating multiple sources
+
+```bash
+cd 02-file-processing
+python wordcount_file.py sample_text.txt
+python wordcount_multifile.py .
+```
+
+---
+
+### Level 3: Distributed Simulation (`03-distributed-simulation/`)
+**Goal**: Understand distributed systems and parallel processing
+
+Simulate Hadoop-style distributed processing:
+- [`simulated_hdfs.py`](03-distributed-simulation/simulated_hdfs.py) - HDFS simulation (blocks, replication)
+- [`parallel_mapreduce.py`](03-distributed-simulation/parallel_mapreduce.py) - Parallel Map and Reduce tasks
+- [`distributed_mapreduce.py`](03-distributed-simulation/distributed_mapreduce.py) - Complete distributed system
+
+**Key Concepts**: Data blocks, replication, parallel processing, data locality
+
+```bash
+cd 03-distributed-simulation
+python simulated_hdfs.py          # HDFS demo
+python parallel_mapreduce.py      # Parallel processing demo
+python distributed_mapreduce.py   # Full system demo
+```
+
+---
+
+## Quick Start Guide
+
+**Complete beginner?** Follow this path:
+
+1. **Start with basics** (15-20 min)
+   ```bash
+   cd 01-basics
+   python wordcount.py
+   python examples/sales.py
+   ```
+
+2. **Move to file processing** (10-15 min)
+   ```bash
+   cd ../02-file-processing
+   python wordcount_file.py ../../../../datasets/mapreduce/sample_text.txt
+   python wordcount_multifile.py ../../../../datasets/mapreduce/
+   ```
+
+3. **Explore distributed concepts** (20-30 min)
+   ```bash
+   cd ../03-distributed-simulation
+   python distributed_mapreduce.py
+   ```
+
+## What You'll Learn
+
+- ✅ **Level 1**: How MapReduce works (map, shuffle, reduce)
+- ✅ **Level 2**: Processing real data from files
+- ✅ **Level 3**: How Hadoop distributes and parallelizes work
+
+## Requirements
+
+- Python 3.8+
+- No external libraries needed (uses only standard library)
 
 ## Next Steps
 
-After mastering pure Python MapReduce:
-1. Move to `../02-mrjob/` for Hadoop-compatible code
-2. Then explore `../03-pyspark/` for production-ready tools
+After completing this module:
+1. **`../02-mrjob/`** - Write Hadoop-compatible MapReduce code
+2. **`../03-pyspark/`** - Use production-ready Big Data tools

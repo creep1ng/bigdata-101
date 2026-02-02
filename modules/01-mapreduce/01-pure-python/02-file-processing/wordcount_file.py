@@ -4,7 +4,7 @@ WordCount from text file - MapReduce example.
 Reads a text file and counts word frequency.
 """
 
-from mapreduce_framework import mapreduce, print_results
+import sys; import os; sys.path.append(os.path.join(os.path.dirname(__file__), "../01-basics")); from mapreduce_framework import mapreduce, print_results
 
 
 def mapper(line):

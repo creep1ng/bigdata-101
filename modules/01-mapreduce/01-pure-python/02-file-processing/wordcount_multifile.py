@@ -6,7 +6,7 @@ Counts word frequency across multiple files and shows which files contain each w
 
 import os
 from collections import defaultdict
-from mapreduce_framework import mapreduce, print_results
+import sys; import os; sys.path.append(os.path.join(os.path.dirname(__file__), "../01-basics")); from mapreduce_framework import mapreduce, print_results
 
 
 def mapper(file_data):
