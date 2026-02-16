@@ -15,15 +15,21 @@ Simulate how Hadoop distributes and processes data across a cluster. This level 
 - Run: `python3 simulated_hdfs.py`
 
 **Key Concepts:**
-- Block storage (files split into chunks)
+- Block storage (files split into 256KB chunks)
 - Replication (3 copies of each block by default)
-- Data distribution (blocks spread across 6 nodes)
+- Data distribution (blocks spread across 4 nodes)
 - Fault tolerance (multiple copies ensure availability)
 
 **Demo Output:**
 ```
-Block 0: 512 bytes -> ['node_3/...', 'node_2/...', 'node_1/...']
-Block 1: 512 bytes -> ['node_2/...', 'node_1/...', 'node_0/...']
+Demo mode: Using dataset file...
+Usage: python simulated_hdfs.py <file1> [file2] ...
+
+[HDFS] Uploading .../datasets/book/The story of the universe.txt to /user/data/the_story_of_the_universe.txt
+  Block 0: 262144 bytes -> ['node_2/...', 'node_0/...', 'node_3/...']
+  Block 1: 262144 bytes -> ['node_1/...', 'node_3/...', 'node_0/...']
+  Block 2: 223637 bytes -> ['node_0/...', 'node_2/...', 'node_1/...']
+[HDFS] Upload complete: 3 blocks, 747925 bytes
 ```
 Notice how each block is on different nodes!
 
@@ -120,7 +126,7 @@ See how files are split into blocks and distributed:
 ```bash
 python3 simulated_hdfs.py
 ```
-Creates a test file and shows HDFS distribution.
+Loads the dataset file automatically and shows HDFS distribution.
 
 **With your own file:**
 ```bash
@@ -197,9 +203,9 @@ python3 distributed_mapreduce.py ../../../../datasets/mapreduce/sample_text.txt 
 
 ### HDFS Block Distribution
 ```
-Block 0: node_4, node_0, node_1  ← Different nodes
-Block 1: node_3, node_1, node_0  ← Different nodes
-Block 2: node_2, node_5, node_1  ← Different nodes
+Block 0: node_2, node_0, node_3  ← Different nodes
+Block 1: node_1, node_3, node_0  ← Different nodes
+Block 2: node_0, node_2, node_1  ← Different nodes
 ```
 Each block is on 3 different nodes (not all on the same nodes!)
 
@@ -223,8 +229,8 @@ Reduce phase:  35.8% of time
 ## Key Concepts
 
 ### Data Distribution
-- Files split into blocks (24KB default)
-- Blocks stored across multiple nodes (6 nodes)
+- Files split into blocks (256KB default in `simulated_hdfs.py`, 24KB in `distributed_mapreduce.py`)
+- Blocks stored across multiple nodes (4 nodes in standalone HDFS, 6 in distributed MapReduce)
 - Enables parallel processing
 
 ### Replication
@@ -276,8 +282,8 @@ Reduce phase:  35.8% of time
 | `distributed_mapreduce.py` | Complete Hadoop stack |
 | Local directories as "nodes" | Actual cluster machines |
 | Python multiprocessing | Distributed processes across cluster |
-| 6 nodes, 3 replicas | Configurable (100s of nodes, 3+ replicas) |
-| 24KB blocks | 128MB blocks (default in Hadoop) |
+| 4-6 nodes, 3 replicas | Configurable (100s of nodes, 3+ replicas) |
+| 24KB-256KB blocks | 128MB blocks (default in Hadoop) |
 
 ---
 

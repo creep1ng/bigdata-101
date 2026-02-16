@@ -12,12 +12,12 @@ Learn the fundamental syntax and structure of mrjob by converting the examples y
    - Your first mrjob program
    - Counts word frequency in text files
    - Shows basic mapper/reducer structure
-   - Run: `python mr_word_count.py ../../../datasets/mapreduce/sample_text.txt`
+   - Run: `python mr_word_count.py ../../../../datasets/mapreduce/sample_text.txt`
 
 2. **[`mr_word_frequency.py`](mr_word_frequency.py)** - Multi-metric counting
    - Counts characters, words, and lines simultaneously
    - Shows how to emit multiple key types
-   - Run: `python mr_word_frequency.py ../../../datasets/mapreduce/sample_text.txt`
+   - Run: `python mr_word_frequency.py ../../../../datasets/mapreduce/sample_text.txt`
 
 3. **[`mr_temperature.py`](mr_temperature.py)** - Average temperature by city
    - Solves the exercise from pure Python module
@@ -134,19 +134,19 @@ if __name__ == '__main__':
 
 ```bash
 # 1. Word count on sample text
-python mr_word_count.py ../../../datasets/mapreduce/sample_text.txt
+python mr_word_count.py ../../../../datasets/mapreduce/sample_text.txt
 
 # 2. Count metrics on a book
-python mr_word_frequency.py ../../../datasets/book/*.txt
+python mr_word_frequency.py ../../../../datasets/book/*.txt
 
 # 3. Temperature analysis
 python mr_temperature.py temperatures.json
 
 # 4. Try with local runner (simulates Hadoop)
-python mr_word_count.py -r local ../../../datasets/mapreduce/sample_text.txt
+python mr_word_count.py -r local ../../../../datasets/mapreduce/sample_text.txt
 
 # 5. Process all text files in a directory
-python mr_word_count.py ../../../datasets/mapreduce/*.txt
+python mr_word_count.py ../../../../datasets/mapreduce/*.txt
 ```
 
 ## Exercises
