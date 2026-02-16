@@ -158,7 +158,7 @@ if __name__ == "__main__":
     import sys
     
     # Initialize HDFS
-    hdfs = SimulatedHDFS(block_size=8192, replication=3, num_nodes=6)
+    hdfs = SimulatedHDFS(block_size=262144, replication=3, num_nodes=4)
     
     if len(sys.argv) > 1:
         # User provided file(s)
@@ -179,25 +179,26 @@ if __name__ == "__main__":
         # List all files
         print(f"\n[HDFS] All files: {hdfs.list_files()}")
     else:
-        # Demo mode - create sample file
-        print("Demo mode: Creating sample file...")
+        # Demo mode - use dataset file
+        print("Demo mode: Using dataset file...")
         print("Usage: python simulated_hdfs.py <file1> [file2] ...\n")
         
-        sample_file = "test_file.txt"
-        with open(sample_file, 'w') as f:
-            f.write("This is a test file for HDFS simulation.\n" * 50)
+        # Resolve path relative to this script's location
+        script_dir = Path(__file__).resolve().parent
+        sample_file = script_dir / ".." / ".." / ".." / ".." / "datasets" / "book" / "The story of the universe.txt"
+        
+        if not sample_file.exists():
+            print(f"Error: Dataset file not found: {sample_file}")
+            sys.exit(1)
         
         # Upload to HDFS
-        hdfs.put(sample_file, "/user/data/test.txt")
+        hdfs.put(str(sample_file), "/user/data/the_story_of_the_universe.txt")
         
         # Get file info
-        hdfs.get_info("/user/data/test.txt")
+        hdfs.get_info("/user/data/the_story_of_the_universe.txt")
         
         # List files
         print(f"\n[HDFS] Files: {hdfs.list_files()}")
-        
-        # Clean up
-        os.remove(sample_file)
         
         print("\nTo use with your own files:")
         print("  python simulated_hdfs.py myfile.txt")
