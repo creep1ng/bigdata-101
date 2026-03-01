@@ -9,7 +9,7 @@ MapReduce is a programming model for processing large volumes of data in a distr
 
 ## Learning Approaches
 
-This module covers three approaches to learn MapReduce locally:
+This module covers two approaches to learn MapReduce locally:
 
 ### 1. Pure Python (Fundamentals)
 - Implementation from scratch using native Python functions
@@ -24,17 +24,11 @@ This module covers three approaches to learn MapReduce locally:
 - Location: `02-mrjob/`
 - **Status**: ✅ Complete - Ready to use!
 
-### 3. PySpark (Professional Tool)
-- Modern framework based on MapReduce with optimizations
-- Goal: Use industry-standard tools
-- Ideal for: Real applications and advanced analysis
-- Location: `03-pyspark/`
-
 ## Recommended Progression
 
 1. Start with pure Python to understand concepts
 2. Practice with mrjob to see realistic implementations
-3. Apply knowledge with PySpark for professional cases
+3. Continue with the `02-pyspark` module for professional tools
 
 ## Requirements
 

@@ -70,7 +70,7 @@ class MRInvertedIndex(MRJob):
         unique_docs = sorted(set(documents))
         
         # Output word and list of documents
-        yield (word, unique_docs)
+        yield (word, f"{word}:{unique_docs}")
 
 
 if __name__ == '__main__':
