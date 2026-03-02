@@ -28,7 +28,7 @@ This module covers two approaches to learn MapReduce locally:
 
 1. Start with pure Python to understand concepts
 2. Practice with mrjob to see realistic implementations
-3. Continue with the `02-pyspark` module for professional tools
+3. Continue with the `02-spark` module for professional tools
 
 ## Requirements
 
