@@ -4,6 +4,8 @@
 
 Understanding Spark's architecture is essential before deploying a cluster. This section covers what happens under the hood when you run a Spark job.
 
+All concepts here are explorable through the Spark UI at http://localhost:4040 (while a job is running).
+
 ## Components
 
 ```
@@ -30,15 +32,21 @@ Understanding Spark's architecture is essential before deploying a cluster. This
 - Schedules tasks on executors
 - Hosts the Spark UI (port 4040)
 
+In our Docker setup: the `spark-submit` process is the driver.
+
 ### Executor
 - Worker process that runs tasks
 - Stores data in memory/disk (cache)
 - One or more per worker node
 - Reports status back to driver
 
+In our Docker setup: `spark-worker-1` and `spark-worker-2` run executors.
+
 ### Cluster Manager
 - Allocates resources (CPU, memory) across the cluster
 - Types: Standalone (built-in), YARN (Hadoop), Mesos, Kubernetes
+
+In our Docker setup: `spark-master` is the Standalone cluster manager.
 
 ## How a Job Executes
 
@@ -82,9 +90,33 @@ rdd = sc.parallelize([1,2,3,4,5,6,7,8], numSlices=4)
 - Too many partitions = overhead from scheduling
 - Rule of thumb: 2-4 partitions per CPU core
 
+You can inspect partitions with `glom()`:
+```python
+rdd.glom().collect()  # Returns a list of lists, one per partition
+```
+
+## Narrow vs Wide Transformations
+
+This is the key distinction for understanding Spark performance:
+
+| Type | What happens | Examples | Shuffle? |
+|------|-------------|----------|----------|
+| **Narrow** | Each partition is processed independently | `map`, `filter`, `flatMap` | No |
+| **Wide** | Data must move between partitions | `reduceByKey`, `groupByKey`, `join` | Yes |
+
+```
+Narrow (map):                    Wide (reduceByKey):
+Partition 0 → Partition 0       Partition 0 ─┐
+Partition 1 → Partition 1       Partition 1 ─┼→ Shuffle → New partitions
+Partition 2 → Partition 2       Partition 2 ─┘
+(data stays in place)           (data moves across the network)
+```
+
+Every wide transformation creates a new **stage** in the DAG.
+
 ## Shuffles
 
-A shuffle redistributes data across partitions. It's the most expensive operation.
+A shuffle redistributes data across partitions. It's the most expensive operation because data moves across the network (or between containers in Docker).
 
 Operations that cause shuffles:
 - `reduceByKey()`, `groupByKey()`
@@ -99,29 +131,61 @@ Partition 2: (a,1)(b,1)     Partition 2: (c,1)
          ↑ shuffle happens here
 ```
 
+In the Spark UI, you can see shuffle metrics in the Stages tab: "Shuffle Read" and "Shuffle Write" show how much data moved.
+
+## Cache
+
+When you run multiple actions on the same RDD, Spark recomputes it from scratch each time. `cache()` tells Spark to keep the result in memory after the first computation.
+
+```python
+rdd = sc.textFile("big_file.csv").map(parse).cache()
+
+rdd.count()    # First action: reads file, parses, stores in memory
+rdd.take(10)   # Second action: reads from memory (fast!)
+rdd.sum()      # Third action: reads from memory (fast!)
+```
+
+Without `cache()`, Spark would read and parse the file 3 times.
+
+You can see cached RDDs in the Spark UI's **Storage** tab.
+
 ## Spark UI
 
-When running locally, access at `http://localhost:4040`
+When running a job, access at http://localhost:4040
 
-Key tabs:
-- **Jobs**: Overall job progress
-- **Stages**: Breakdown of each stage, shuffle read/write
-- **Storage**: Cached RDDs and their memory usage
-- **Executors**: Resource usage per executor
-- **SQL**: Query plans (for DataFrames/SQL)
+| Tab | What to look for |
+|-----|-----------------|
+| **Jobs** | One job per action (`collect`, `count`, `take`). Shows overall progress |
+| **Stages** | Stages within each job. Look for shuffle read/write metrics |
+| **Storage** | Cached RDDs — memory used, fraction cached |
+| **Executors** | Resource usage per executor — tasks completed, memory, shuffle |
 
 ## Files
 
-- **[`architecture_demo.py`](architecture_demo.py)** — Script that demonstrates partitions, stages, and the Spark UI
-  - Run it and open `http://localhost:4040` to explore
-  - Run: `python architecture_demo.py`
+- **[`architecture_demo.py`](architecture_demo.py)** — Interactive demo of all architecture concepts
+  - 4 sections: Partitions, Stages/Shuffles, Cache, Narrow vs Wide
+  - Pauses at the end so you can explore the Spark UI
+  - Run: `docker compose exec -it spark-master /opt/spark/bin/spark-submit /app/02-architecture/architecture_demo.py`
+
+## Exercises
+
+1. Run `architecture_demo.py` and open http://localhost:4040
+2. In the **Jobs** tab: count how many jobs were created. Why that number?
+3. In the **Stages** tab: find a stage with shuffle. How many bytes were shuffled?
+4. In the **Storage** tab: find the cached RDD. How much memory does it use?
+5. Go back to `01-rdd-basics/rdd_uber.py` and run it. In the Spark UI:
+   - How many jobs does it create?
+   - Which jobs have shuffles?
+   - Can you see the cached RDD?
 
 ## Key Takeaways
 
 | Concept | Why It Matters |
 |---------|---------------|
 | Driver vs Executor | Know where your code runs vs where data is processed |
-| Partitions | Control parallelism and performance |
-| Shuffles | The #1 performance bottleneck — minimize them |
-| DAG | Spark optimizes your chain of operations before running |
-| Spark UI | Your tool to understand and debug job execution |
+| Partitions | Control parallelism — too few wastes cores, too many wastes scheduling |
+| Narrow vs Wide | Wide = shuffle = slow. Minimize wide transformations |
+| Shuffles | The #1 performance bottleneck — always check shuffle metrics in the UI |
+| DAG + Stages | Spark optimizes your code before running. Stages split at shuffles |
+| Cache | Avoid recomputing the same data. Essential for multi-analysis scripts |
+| Spark UI | Your primary tool to understand and debug job execution |
