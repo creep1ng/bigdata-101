@@ -1,0 +1,40 @@
+# Databricks Asset Bundle - NYC Taxi Pipeline
+# https://docs.databricks.com/dev-tools/bundles/index.html
+
+bundle:
+  name: nyctaxi-pipeline
+
+include:
+  - resources/*.yml
+
+variables:
+  user_initials:
+    description: "Iniciales del estudiante (ej: casm). Determina el nombre del catálogo."
+    default: casm
+
+  catalog:
+    description: "Catálogo de Unity Catalog — se compone con las iniciales"
+    default: "${var.user_initials}_nytaxi"
+
+  notifications_email:
+    description: Email para alertas del job
+    default: data-team@example.com
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://adb-xxxxxxxxxxxxxxxx.xx.azuredatabricks.net
+    run_as:
+      user_name: ${workspace.current_user.userName}
+
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-xxxxxxxxxxxxxxxx.xx.azuredatabricks.net
+      root_path: /Shared/nyctaxi/prod
+    run_as:
+      service_principal_name: <service-principal-app-id>
+    variables:
+      notifications_email: data-ops@example.com
