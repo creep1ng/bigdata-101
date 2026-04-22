@@ -2,11 +2,8 @@
 # MAGIC %md
 # MAGIC # Bronze: tabla estática de zonas
 # MAGIC
-# MAGIC Azure Open Datasets no incluye el lookup de zonas. Lo descargamos
-# MAGIC una vez desde el CDN oficial de la TLC y lo persistimos como Delta
-# MAGIC en TU storage personal.
-# MAGIC
-# MAGIC Son 265 filas — no amerita ningún proceso especial.
+# MAGIC Lee el CSV de zonas que el profesor dejó en el landing y lo persiste
+# MAGIC como Delta en Unity Catalog.
 
 # COMMAND ----------
 
@@ -14,33 +11,7 @@
 
 # COMMAND ----------
 
-import urllib.request
-import tempfile
-from pathlib import Path
-
-configure_storage_access(spark)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 1. Descargar el CSV de zonas
-# MAGIC
-# MAGIC Lo bajamos al filesystem local del driver (temporal) y de ahí lo leemos.
-
-# COMMAND ----------
-
-ZONES_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
-
-with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
-    urllib.request.urlretrieve(ZONES_URL, tmp.name)
-    local_path = tmp.name
-
-print(f"Descargado en: {local_path}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 2. Leer y escribir como Delta
+spark.sql(f"USE CATALOG {CATALOG}")
 
 # COMMAND ----------
 
@@ -48,7 +19,7 @@ zones_df = (
     spark.read
     .option("header", True)
     .option("inferSchema", True)
-    .csv(f"file:{local_path}")
+    .csv(f"{LANDING_ZONES_PATH}/taxi_zone_lookup.csv")
 )
 
 zones_df.printSchema()

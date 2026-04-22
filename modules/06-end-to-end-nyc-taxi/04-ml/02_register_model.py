@@ -1,13 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Registro del modelo en el MLflow Workspace Registry
-# MAGIC
-# MAGIC Sin Unity Catalog registramos el modelo en el **workspace registry**
-# MAGIC (el legacy). Cada estudiante tiene su propio nombre de modelo con
-# MAGIC sus iniciales (`MODEL_NAME` en config).
-# MAGIC
-# MAGIC Usamos el patrón de stages clásico (`None` → `Staging` → `Production`
-# MAGIC → `Archived`).
+# MAGIC # Registro del modelo en Unity Catalog
 
 # COMMAND ----------
 
@@ -18,34 +11,31 @@
 import mlflow
 from mlflow.tracking import MlflowClient
 
-# IMPORTANTE: sin UC usamos el registry por defecto (workspace)
-# No llamamos mlflow.set_registry_uri("databricks-uc") acá.
+spark.sql(f"USE CATALOG {CATALOG}")
+mlflow.set_registry_uri("databricks-uc")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 1. Obtener el run_id del notebook anterior
+# MAGIC ## 1. Crear el schema ML si no existe (para el modelo)
 
 # COMMAND ----------
 
-run_id = dbutils.jobs.taskValues.get(
-    taskKey="train",
-    key="training_run_id",
-    default=None,
-    debugValue="",
-)
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA_ML}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 2. Obtener run_id
+
+# COMMAND ----------
+
+run_id = dbutils.jobs.taskValues.get(taskKey="train", key="training_run_id", default=None, debugValue="")
 
 if not run_id:
     client = MlflowClient()
-    active = mlflow.active_run()
-    exp_id = active.info.experiment_id if active else None
-    if exp_id:
-        runs = client.search_runs(
-            experiment_ids=[exp_id],
-            order_by=["start_time DESC"],
-            max_results=1,
-        )
-        run_id = runs[0].info.run_id
+    runs = client.search_runs(order_by=["start_time DESC"], max_results=1)
+    run_id = runs[0].info.run_id if runs else None
 
 assert run_id, "No se encontró run_id. Corre primero el notebook de training."
 print(f"Registrando modelo del run: {run_id}")
@@ -53,37 +43,21 @@ print(f"Registrando modelo del run: {run_id}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2. Registrar el modelo
+# MAGIC ## 3. Registrar en UC
 
 # COMMAND ----------
 
 model_uri = f"runs:/{run_id}/model"
 registered = mlflow.register_model(model_uri=model_uri, name=MODEL_NAME)
-
 print(f"✓ Registrado {MODEL_NAME} versión {registered.version}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Promover la versión a Staging
+# MAGIC ## 4. Asignar alias `challenger`
 
 # COMMAND ----------
 
 client = MlflowClient()
-client.transition_model_version_stage(
-    name=MODEL_NAME,
-    version=registered.version,
-    stage="Staging",
-    archive_existing_versions=False,
-)
-print(f"✓ Versión {registered.version} movida a Staging")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 4. Inspección
-
-# COMMAND ----------
-
-for v in client.search_model_versions(f"name='{MODEL_NAME}'"):
-    print(f"  v{v.version}  stage={v.current_stage}  run={v.run_id}")
+client.set_registered_model_alias(name=MODEL_NAME, alias="challenger", version=registered.version)
+print(f"✓ Alias 'challenger' asignado a versión {registered.version}")

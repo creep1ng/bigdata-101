@@ -2,143 +2,103 @@
 # MAGIC %md
 # MAGIC # Configuración centralizada del pipeline NYC Taxi
 # MAGIC
-# MAGIC Este notebook se importa en los demás con `%run ../00-setup/config`.
-# MAGIC Centraliza todos los paths, schemas y parámetros del pipeline.
+# MAGIC Este notebook se importa con `%run ../00-setup/config`.
+# MAGIC Centraliza paths, schemas y parámetros del pipeline.
 # MAGIC
-# MAGIC ## Arquitectura (sin Unity Catalog)
+# MAGIC ## Arquitectura
 # MAGIC
-# MAGIC - **Landing**: Azure Open Datasets (NYC TLC) — público, read-only, SAS "r"
-# MAGIC - **Bronze/Silver/Gold**: storage personal del estudiante (`dl25604<iniciales>`)
-# MAGIC - **Catálogo**: `hive_metastore` con schemas `<iniciales>_nytaxi_bronze/silver/gold/ml`
-# MAGIC - **Secret scope**: `nytaxi-course` con la access key del storage personal
+# MAGIC - **Landing compartido**: Volume UC `/Volumes/nytaxi_landing/raw/files/` — el
+# MAGIC   profesor descargó ahí los parquets de NYC TLC y todos los estudiantes leen
+# MAGIC   de ahí con permisos de Unity Catalog.
+# MAGIC - **Catálogo del estudiante**: `<iniciales>_nytaxi` con esquemas
+# MAGIC   `bronze / silver / gold / ml`.
+# MAGIC - Namespace de 3 niveles: `catálogo.esquema.tabla`.
 
 # COMMAND ----------
 
 # =============================================================================
 # Identidad del estudiante
 # =============================================================================
-# Cambiar estas iniciales por las tuyas antes de correr cualquier notebook.
-# Deben coincidir con el nombre de tu storage: dl25604<USER_INITIALS>
-# Ejemplo: para "Camilo Soto" cuyo storage es dl25604soto → USER_INITIALS = "soto"
+# Cambia estas iniciales por las tuyas antes de correr cualquier notebook.
+# Ejemplo: para "Camilo Soto Montoya" → "casm"
 USER_INITIALS = None
 
 # =============================================================================
-# Schemas en hive_metastore (dos niveles: schema.tabla)
+# Unity Catalog
 # =============================================================================
-SCHEMA_BRONZE = f"{USER_INITIALS}_nytaxi_bronze"
-SCHEMA_SILVER = f"{USER_INITIALS}_nytaxi_silver"
-SCHEMA_GOLD   = f"{USER_INITIALS}_nytaxi_gold"
-SCHEMA_ML     = f"{USER_INITIALS}_nytaxi_ml"
-
-# =============================================================================
-# Storage del estudiante (para Bronze/Silver/Gold/ML)
-# =============================================================================
-STORAGE_ACCOUNT = f"dl25604{USER_INITIALS}"
-STORAGE_CONTAINER = "nytaxi"
-
-# Secret scope compartido donde viven las access keys
-SECRET_SCOPE = "nytaxi-course"
-SECRET_KEY_NAME = f"adls-key-{USER_INITIALS}"
-
-# Paths abfss de las capas en TU storage
-def _layer_path(layer: str) -> str:
-    return f"abfss://{STORAGE_CONTAINER}@{STORAGE_ACCOUNT}.dfs.core.windows.net/{layer}"
-
-PATH_BRONZE = _layer_path("bronze")
-PATH_SILVER = _layer_path("silver")
-PATH_GOLD   = _layer_path("gold")
-PATH_ML     = _layer_path("ml")
-
-# Paths técnicos
-PATH_CHECKPOINTS = _layer_path("_checkpoints")
-PATH_SCHEMAS     = _layer_path("_schemas")
+CATALOG = f"{USER_INITIALS}_nytaxi"
+SCHEMA_BRONZE = "bronze"
+SCHEMA_SILVER = "silver"
+SCHEMA_GOLD   = "gold"
+SCHEMA_ML     = "ml"
 
 # =============================================================================
-# Landing: Azure Open Datasets (público)
+# External Location: catálogo del estudiante (managed storage)
 # =============================================================================
-# https://learn.microsoft.com/en-us/azure/open-datasets/dataset-taxi-yellow
-OPEN_DATASETS_ACCOUNT = "azureopendatastorage"
-OPEN_DATASETS_CONTAINER = "nyctlc"
-OPEN_DATASETS_PATH = "yellow"
-OPEN_DATASETS_SAS = "r"  # SAS token público de lectura
+EXTERNAL_LOCATION = "abfss://landing@dl25604nytaxi.dfs.core.windows.net"
 
-LANDING_WASBS = (
-    f"wasbs://{OPEN_DATASETS_CONTAINER}@{OPEN_DATASETS_ACCOUNT}"
-    f".blob.core.windows.net/{OPEN_DATASETS_PATH}"
+# =============================================================================
+# Landing compartido (Volume UC, preparado por el profesor)
+# =============================================================================
+LANDING_CATALOG = "nytaxi_landing"
+LANDING_VOLUME_PATH = f"/Volumes/{LANDING_CATALOG}/raw/files"
+LANDING_TRIPS_PATH = f"{LANDING_VOLUME_PATH}/yellow_trips"
+LANDING_ZONES_PATH = f"{LANDING_VOLUME_PATH}/zones"
+
+# =============================================================================
+# Esquema canónico del landing (Yellow Taxi TLC)
+# =============================================================================
+# Los parquets mensuales de la TLC tienen inconsistencias de tipos entre meses
+# (INT vs BIGINT, airport_fee vs Airport_fee). Este esquema fuerza tipos
+# uniformes para que spark.read funcione sin errores.
+from pyspark.sql.types import (
+    StructType, StructField, LongType, DoubleType, StringType, TimestampNTZType,
 )
 
-# =============================================================================
-# Tablas del pipeline
-# =============================================================================
-# Bronze
-T_BRONZE_TRIPS = f"{SCHEMA_BRONZE}.yellow_trips"
-T_BRONZE_ZONES = f"{SCHEMA_BRONZE}.taxi_zones"
-
-# Silver
-T_SILVER_TRIPS           = f"{SCHEMA_SILVER}.trips_clean"
-T_SILVER_TRIPS_ENRICHED  = f"{SCHEMA_SILVER}.trips_enriched"
-T_SILVER_REJECTED        = f"{SCHEMA_SILVER}.trips_rejected"
-
-# Gold
-T_GOLD_REVENUE_BY_ZONE = f"{SCHEMA_GOLD}.revenue_by_zone"
-T_GOLD_DAILY_METRICS   = f"{SCHEMA_GOLD}.daily_metrics"
-T_GOLD_HOURLY_DEMAND   = f"{SCHEMA_GOLD}.hourly_demand"
-
-# ML
-T_ML_FEATURES    = f"{SCHEMA_ML}.trip_duration_features"
-T_ML_PREDICTIONS = f"{SCHEMA_ML}.trip_duration_predictions"
-
-# Modelo en el workspace MLflow registry (no en UC porque no hay UC)
-MODEL_NAME = f"{USER_INITIALS}_trip_duration_regressor"
+LANDING_SCHEMA = StructType([
+    StructField("VendorID",              LongType()),
+    StructField("tpep_pickup_datetime",  TimestampNTZType()),
+    StructField("tpep_dropoff_datetime", TimestampNTZType()),
+    StructField("passenger_count",       DoubleType()),
+    StructField("trip_distance",         DoubleType()),
+    StructField("RatecodeID",            DoubleType()),
+    StructField("store_and_fwd_flag",    StringType()),
+    StructField("PULocationID",          LongType()),
+    StructField("DOLocationID",          LongType()),
+    StructField("payment_type",          LongType()),
+    StructField("fare_amount",           DoubleType()),
+    StructField("extra",                 DoubleType()),
+    StructField("mta_tax",              DoubleType()),
+    StructField("tip_amount",            DoubleType()),
+    StructField("tolls_amount",          DoubleType()),
+    StructField("improvement_surcharge", DoubleType()),
+    StructField("total_amount",          DoubleType()),
+    StructField("congestion_surcharge",  DoubleType()),
+    StructField("airport_fee",           DoubleType()),
+])
 
 # =============================================================================
-# Parámetros de ejecución
+# Tablas (3 niveles)
 # =============================================================================
-# Años/meses a procesar. Azure Open Datasets tiene datos desde 2009.
-# Usa una ventana pequeña para las primeras corridas.
-YEAR_FROM = 2018
-YEAR_TO   = 2018      # inclusivo
-MONTH_FROM = 1
-MONTH_TO   = 3        # inclusivo
+T_BRONZE_TRIPS = f"{CATALOG}.{SCHEMA_BRONZE}.yellow_trips"
+T_BRONZE_ZONES = f"{CATALOG}.{SCHEMA_BRONZE}.taxi_zones"
 
-# =============================================================================
-# Inicializador: configurar acceso al storage personal con la access key
-# =============================================================================
-def configure_storage_access(spark_session):
-    """
-    Lee la access key del secret scope y la registra en la sesión de Spark
-    para que TU storage personal sea accesible vía abfss://.
+T_SILVER_TRIPS          = f"{CATALOG}.{SCHEMA_SILVER}.trips_clean"
+T_SILVER_TRIPS_ENRICHED = f"{CATALOG}.{SCHEMA_SILVER}.trips_enriched"
+T_SILVER_REJECTED       = f"{CATALOG}.{SCHEMA_SILVER}.trips_rejected"
 
-    El landing NO requiere config — usa SAS público, se configura en cada
-    notebook que lo use.
-    """
-    key = dbutils.secrets.get(SECRET_SCOPE, SECRET_KEY_NAME)
-    spark_session.conf.set(
-        f"fs.azure.account.key.{STORAGE_ACCOUNT}.dfs.core.windows.net",
-        key,
-    )
-    return True
+T_GOLD_REVENUE_BY_ZONE = f"{CATALOG}.{SCHEMA_GOLD}.revenue_by_zone"
+T_GOLD_DAILY_METRICS   = f"{CATALOG}.{SCHEMA_GOLD}.daily_metrics"
+T_GOLD_HOURLY_DEMAND   = f"{CATALOG}.{SCHEMA_GOLD}.hourly_demand"
 
+T_ML_FEATURES    = f"{CATALOG}.{SCHEMA_ML}.trip_duration_features"
+T_ML_PREDICTIONS = f"{CATALOG}.{SCHEMA_ML}.trip_duration_predictions"
 
-def configure_landing_access(spark_session):
-    """
-    Configura el SAS público de Azure Open Datasets para leer el landing.
-    """
-    spark_session.conf.set(
-        f"fs.azure.sas.{OPEN_DATASETS_CONTAINER}.{OPEN_DATASETS_ACCOUNT}.blob.core.windows.net",
-        OPEN_DATASETS_SAS,
-    )
-    return True
+MODEL_NAME = f"{CATALOG}.{SCHEMA_ML}.trip_duration_regressor"
 
 # COMMAND ----------
 
 print(f"User initials:     {USER_INITIALS}")
-print(f"Storage account:   {STORAGE_ACCOUNT}")
-print(f"Container:         {STORAGE_CONTAINER}")
-print(f"Schema Bronze:     {SCHEMA_BRONZE}")
-print(f"Schema Silver:     {SCHEMA_SILVER}")
-print(f"Schema Gold:       {SCHEMA_GOLD}")
-print(f"Schema ML:         {SCHEMA_ML}")
-print(f"Landing:           {LANDING_WASBS}")
-print(f"Secret scope/key:  {SECRET_SCOPE} / {SECRET_KEY_NAME}")
-print(f"Period:            {YEAR_FROM}-{MONTH_FROM:02d} to {YEAR_TO}-{MONTH_TO:02d}")
+print(f"Catalog:           {CATALOG}")
+print(f"Landing trips:     {LANDING_TRIPS_PATH}")
+print(f"Landing zones:     {LANDING_ZONES_PATH}")
