@@ -50,25 +50,8 @@ for schema, comment in [
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Volume para archivos no tabulares (landing local)
-
-# COMMAND ----------
-
-spark.sql(f"""
-    CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA_BRONZE}.{VOLUME_LANDING}
-      COMMENT 'Archivos no tabulares (CSVs, etc.)'
-""")
-print(f"  ✓ Volume: {CATALOG}.{SCHEMA_BRONZE}.{VOLUME_LANDING}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 4. Verificación
+# MAGIC ## 3. Verificación
 
 # COMMAND ----------
 
 display(spark.sql(f"SHOW SCHEMAS IN {CATALOG}"))
-
-# COMMAND ----------
-
-display(spark.sql(f"SHOW VOLUMES IN {CATALOG}.{SCHEMA_BRONZE}"))

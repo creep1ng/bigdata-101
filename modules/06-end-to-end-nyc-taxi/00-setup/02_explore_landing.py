@@ -29,7 +29,7 @@ for f in dbutils.fs.ls(LANDING_TRIPS_PATH):
 
 # COMMAND ----------
 
-df = spark.read.schema(LANDING_SCHEMA).parquet(LANDING_TRIPS_PATH)
+df = read_yellow_trips(spark)
 df.printSchema()
 
 # COMMAND ----------

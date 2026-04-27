@@ -23,9 +23,8 @@ spark.sql(f"USE CATALOG {CATALOG}")
 # COMMAND ----------
 
 raw = (
-    spark.read.schema(LANDING_SCHEMA).parquet(LANDING_TRIPS_PATH)
+    read_yellow_trips(spark)
     .withColumn("_ingested_at", F.current_timestamp())
-    .withColumn("_source_file", F.input_file_name())
 )
 
 print(f"Leyendo desde: {LANDING_TRIPS_PATH}")
