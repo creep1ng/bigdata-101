@@ -1,6 +1,9 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Entrenamiento: predicción de duración de viaje
+# MAGIC # Entrenamiento: predicción de duración de viaje (Spark MLlib)
+# MAGIC
+# MAGIC Usa un pipeline de Spark MLlib con `GBTRegressor` para predecir
+# MAGIC la duración de un viaje en minutos. El modelo se loguea en MLflow.
 
 # COMMAND ----------
 
@@ -9,29 +12,41 @@
 # COMMAND ----------
 
 import mlflow
-import mlflow.sklearn
-import pandas as pd
-from math import sqrt
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import mlflow.spark
+from pyspark.sql import functions as F
+from pyspark.ml import Pipeline
+from pyspark.ml.feature import StringIndexer, OneHotEncoder, VectorAssembler
+from pyspark.ml.regression import GBTRegressor
+from pyspark.ml.evaluation import RegressionEvaluator
 
 spark.sql(f"USE CATALOG {CATALOG}")
 mlflow.set_registry_uri("databricks-uc")
-mlflow.sklearn.autolog(log_input_examples=False)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 1. Cargar features y split temporal
 
 # COMMAND ----------
 
 features_df = spark.table(T_ML_FEATURES)
-sample = features_df.sample(fraction=0.05, seed=42).toPandas()
 
-cutoff = sample["pickup_date"].max() - pd.Timedelta(days=30)
-train_df = sample[sample["pickup_date"] < cutoff]
-test_df  = sample[sample["pickup_date"] >= cutoff]
+# Muestreo del 5 % para agilizar el entrenamiento en clase
+sample = features_df.sample(fraction=0.05, seed=42)
 
-print(f"Train: {len(train_df):,} | Test: {len(test_df):,}")
+# Split temporal: últimos 30 días → test, el resto → train
+max_date = sample.agg(F.max("pickup_date")).first()[0]
+cutoff = F.date_sub(F.lit(max_date), 30)
+
+train_df = sample.filter(F.col("pickup_date") < cutoff)
+test_df  = sample.filter(F.col("pickup_date") >= cutoff)
+
+print(f"Train: {train_df.count():,} | Test: {test_df.count():,}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 2. Definir el pipeline de Spark MLlib
 
 # COMMAND ----------
 
@@ -42,31 +57,67 @@ NUMERIC = [
     "is_weekend", "is_rush_hour", "passenger_count", "trip_distance", "RatecodeID",
 ]
 
-X_train, y_train = train_df[CATEGORICAL + NUMERIC], train_df[TARGET]
-X_test,  y_test  = test_df[CATEGORICAL + NUMERIC],  test_df[TARGET]
+# --- Etapa 1: StringIndexer para las columnas categóricas (string → índice) ---
+indexers = [
+    StringIndexer(inputCol=c, outputCol=f"{c}_idx", handleInvalid="keep")
+    for c in CATEGORICAL
+]
+
+# --- Etapa 2: OneHotEncoder sobre los índices ---
+ohe = OneHotEncoder(
+    inputCols=[f"{c}_idx" for c in CATEGORICAL],
+    outputCols=[f"{c}_ohe" for c in CATEGORICAL],
+    handleInvalid="keep",
+)
+
+# --- Etapa 3: VectorAssembler → combinar todo en un vector "features" ---
+assembler_inputs = [f"{c}_ohe" for c in CATEGORICAL] + NUMERIC
+assembler = VectorAssembler(inputCols=assembler_inputs, outputCol="features", handleInvalid="skip")
+
+# --- Etapa 4: GBTRegressor ---
+gbt = GBTRegressor(
+    featuresCol="features",
+    labelCol=TARGET,
+    maxIter=100,
+    maxDepth=5,
+    stepSize=0.1,
+    seed=42,
+)
+
+pipeline = Pipeline(stages=indexers + [ohe, assembler, gbt])
 
 # COMMAND ----------
 
-preprocessor = ColumnTransformer([
-    ("cat", OneHotEncoder(handle_unknown="ignore"), CATEGORICAL),
-    ("num", "passthrough", NUMERIC),
-])
+# MAGIC %md
+# MAGIC ## 3. Entrenar y evaluar
 
-pipeline = Pipeline([
-    ("prep", preprocessor),
-    ("model", GradientBoostingRegressor(n_estimators=100, max_depth=5, learning_rate=0.1, random_state=42)),
-])
+# COMMAND ----------
 
-with mlflow.start_run(run_name=f"{USER_INITIALS}_gbr_trip_duration") as run:
-    pipeline.fit(X_train, y_train)
-    preds = pipeline.predict(X_test)
+with mlflow.start_run(run_name=f"{USER_INITIALS}_gbt_trip_duration") as run:
 
-    rmse = sqrt(mean_squared_error(y_test, preds))
-    mae = mean_absolute_error(y_test, preds)
-    r2 = r2_score(y_test, preds)
+    model = pipeline.fit(train_df)
+    predictions = model.transform(test_df)
+
+    # Métricas
+    evaluator_rmse = RegressionEvaluator(labelCol=TARGET, predictionCol="prediction", metricName="rmse")
+    evaluator_mae  = RegressionEvaluator(labelCol=TARGET, predictionCol="prediction", metricName="mae")
+    evaluator_r2   = RegressionEvaluator(labelCol=TARGET, predictionCol="prediction", metricName="r2")
+
+    rmse = evaluator_rmse.evaluate(predictions)
+    mae  = evaluator_mae.evaluate(predictions)
+    r2   = evaluator_r2.evaluate(predictions)
 
     mlflow.log_metrics({"test_rmse": rmse, "test_mae": mae, "test_r2": r2})
-    mlflow.log_params({"train_rows": len(train_df), "test_rows": len(test_df), "student": USER_INITIALS})
+    mlflow.log_params({
+        "student": USER_INITIALS,
+        "algorithm": "GBTRegressor",
+        "maxIter": 100,
+        "maxDepth": 5,
+        "stepSize": 0.1,
+    })
+
+    # Loguear el PipelineModel de Spark
+    mlflow.spark.log_model(model, artifact_path="model")
 
     run_id = run.info.run_id
     print(f"Run: {run_id}")

@@ -34,7 +34,20 @@ run_id = dbutils.jobs.taskValues.get(taskKey="train", key="training_run_id", def
 
 if not run_id:
     client = MlflowClient()
-    runs = client.search_runs(order_by=["start_time DESC"], max_results=1)
+    # Buscar en el experimento activo del notebook actual
+    experiment = mlflow.get_experiment_by_name(
+        f"/Users/{spark.conf.get('spark.databricks.notebook.path', '')}"
+    )
+    if experiment is None:
+        # Fallback: usar el experimento por defecto del notebook
+        experiment_id = mlflow.tracking.fluent._get_experiment_id()
+    else:
+        experiment_id = experiment.experiment_id
+    runs = client.search_runs(
+        experiment_ids=[experiment_id],
+        order_by=["start_time DESC"],
+        max_results=1,
+    )
     run_id = runs[0].info.run_id if runs else None
 
 assert run_id, "No se encontró run_id. Corre primero el notebook de training."
