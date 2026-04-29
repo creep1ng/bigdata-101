@@ -254,6 +254,15 @@ T_ML_PREDICTIONS = f"{CATALOG}.{SCHEMA_ML}.trip_duration_predictions"
 
 MODEL_NAME = f"{CATALOG}.{SCHEMA_ML}.trip_duration_regressor"
 
+# =============================================================================
+# Volume para MLflow (requerido en clústeres Shared/Serverless)
+# =============================================================================
+ML_VOLUME_NAME = "mlflow_tmp"
+ML_VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA_ML}/{ML_VOLUME_NAME}"
+
+import os
+os.environ["MLFLOW_DFS_TMP"] = ML_VOLUME_PATH
+
 # COMMAND ----------
 
 print(f"User initials:     {USER_INITIALS}")

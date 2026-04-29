@@ -16,20 +16,29 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 1. Crear catálogo managed en la External Location compartida
+# MAGIC ## 1. Usar catálogo del estudiante
+# MAGIC
+# MAGIC Si el catálogo ya fue creado por el admin/profesor, simplemente lo activamos.
+# MAGIC Si no existe, intentamos crearlo (requiere External Location configurada).
 
 # COMMAND ----------
 
-managed_location = f"{EXTERNAL_LOCATION}/{CATALOG}"
-
-spark.sql(f"""
-    CREATE CATALOG IF NOT EXISTS {CATALOG}
-      MANAGED LOCATION '{managed_location}'
-      COMMENT 'Lakehouse NYC Taxi — estudiante {USER_INITIALS}'
-""")
-
-spark.sql(f"USE CATALOG {CATALOG}")
-print(f"✓ Catálogo activo: {CATALOG}")
+try:
+    spark.sql(f"USE CATALOG {CATALOG}")
+    print(f"✓ Catálogo activo: {CATALOG}")
+except Exception as e:
+    if "CATALOG_NOT_FOUND" in str(e):
+        print(f"⚠ Catálogo {CATALOG} no encontrado. Intentando crearlo...")
+        managed_location = f"{EXTERNAL_LOCATION}/{CATALOG}"
+        spark.sql(f"""
+            CREATE CATALOG IF NOT EXISTS {CATALOG}
+              MANAGED LOCATION '{managed_location}'
+              COMMENT 'Lakehouse NYC Taxi — estudiante {USER_INITIALS}'
+        """)
+        spark.sql(f"USE CATALOG {CATALOG}")
+        print(f"✓ Catálogo creado y activo: {CATALOG}")
+    else:
+        raise
 
 # COMMAND ----------
 
@@ -50,7 +59,20 @@ for schema, comment in [
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Verificación
+# MAGIC ## 3. Volume para MLflow (clústeres Shared/Serverless)
+
+# COMMAND ----------
+
+spark.sql(f"""
+    CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA_ML}.{ML_VOLUME_NAME}
+      COMMENT 'Directorio temporal para MLflow Spark models'
+""")
+print(f"  ✓ Volume: {ML_VOLUME_PATH}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 4. Verificación
 
 # COMMAND ----------
 
