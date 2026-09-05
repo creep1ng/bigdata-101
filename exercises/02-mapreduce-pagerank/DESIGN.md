@@ -1,90 +1,125 @@
-# DESIGN.md — PageRank con MapReduce
+# Diseño de PageRank con MapReduce
 
-> Plantilla para la Entrega A. Complétala ANTES de escribir código. Piensa el diseño primero; el código viene después.
+**Autor:** Ricardo Arias
 
-**Autor(es): Ricardo Arias** **Fecha: 2026-08-29**
-
----
+**Fecha:** 2026-08-29
 
 ## 1. Representación de los datos
 
-¿Cómo representas cada nodo del grafo como un "ítem" que el `mapper` recibe? Describe la estructura exacta (qué es la clave, qué es el valor, qué contiene la adyacencia).
-
-- Key: Nombre del nodo. Por ejemplo:
-    - P00107
-    - P00027
-- Value: Puede ser RANK (el PageRank actual) o NEIGHBORS (los vecinos a los que referencia una página).
-    - RANK (`float`):
-        - 0.3
-        - 0.01
-    - NEIGHBORS (`list[str]`):
-        - `[P00051, P00027]`
-        - `[]`
-Un ejemplo de imput puede ser:
+Cada elemento que recibe el mapper representa el estado completo de un nodo:
 
 ```python
-row = ("P00027", 0.0124, ("P00027", "P00051"))
-#       |        |       |
-#       |        |       |- NEIGHBORS
-#       |        |
-#       |        |- RANK
-#       |- Key
+(node, rank, neighbors)
 ```
 
-Se pasan ambos valores RANK y NEIGHBORS a `map()` para preservar la estructura del grafo. Luego `map()` los pasa a `reduce()`, donde la lógica implementada se encargará de actualizar los PageRanks de cada página.
+| Campo | Tipo | Significado |
+|---|---|---|
+| `node` | `str` | Identificador único de la página. |
+| `rank` | `float` | PageRank actual de la página. |
+| `neighbors` | `tuple[str, ...]` | Páginas enlazadas por el nodo. Puede estar vacía. |
 
----
+Ejemplo:
+
+```python
+row = ("P00027", 0.0124, ("P00051", "P00089"))
+```
+
+El estado contiene simultáneamente el rank y la adyacencia porque la salida de
+una iteración se convierte en la entrada de la siguiente.
 
 ## 2. Esquema clave-valor por fase
 
-### MAP — ¿qué emite el mapper por cada nodo?
+### Map
 
-Especifica **todos** los tipos de mensajes que emites (hay más de uno).
+Por cada nodo, el mapper emite dos tipos de mensajes etiquetados:
 
-| Tipo de mensaje | Clave | Valor | Propósito |
-|-----------------|-------|-------|-----------|
-| RANK | Nombre de la página | `float` entre 0 y 1 | Repartir el PageRank de una página entre sus aristas salientes |
-| NEIGHBORS | Nombre de la página | `list[str]` | Preservar a lo largo del ciclo los vecinos de cada nodo |
+| Tipo | Clave | Valor | Cantidad | Propósito |
+|---|---|---|---:|---|
+| `STRUCT` | Nodo de origen | `("STRUCT", neighbors)` | 1 por nodo | Preservar la lista de adyacencia. |
+| `RANK` | Nodo de destino | `("RANK", rank / out_degree)` | 1 por arista | Enviar una contribución de PageRank. |
 
-### SHUFFLE — ¿qué queda agrupado por clave?
+Para un nodo `A` con rank `0.6` y vecinos `B` y `C`, se produce:
 
-Por clave queda agrupado el mensaje NEIGHBOR y los mensajes RANK de cada nodo al que es referenciado cada página.
+```text
+(A, (STRUCT, [B, C]))
+(B, (RANK, 0.3))
+(C, (RANK, 0.3))
+```
 
-### REDUCE — ¿qué retorna el reducer?
+La clave de una contribución es el **destino**, no el origen. De esta manera,
+el shuffle reúne en un solo grupo todas las contribuciones recibidas por una
+página.
 
-Devuelve la tupla `(key, new_rank, neighbors)`.
+### Shuffle
 
----
+Para cada página `P`, el shuffle agrupa:
+
+```text
+P -> [un mensaje STRUCT, cero o más mensajes RANK]
+```
+
+Una página sin enlaces entrantes conserva su grupo gracias a su mensaje
+`STRUCT`, aunque no reciba ningún mensaje `RANK`.
+
+### Reduce
+
+El reducer recupera `neighbors`, suma las contribuciones entrantes y calcula:
+
+```text
+new_rank(P) = (1 - d) / N + d * (incoming(P) + dangling_mass / N)
+```
+
+Su valor reducido vuelve a tener la forma esperada por el mapper:
+
+```python
+(node, new_rank, neighbors)
+```
 
 ## 3. Preservación de la estructura del grafo
 
-Explica **cómo** logras que la lista de adyacencia sobreviva de una iteración a la siguiente. ¿Qué pasaría si NO lo hicieras?
+Cada nodo emite exactamente un mensaje `STRUCT`. El reducer lo copia sin
+modificar al estado reducido. Así, la lista de adyacencia sobrevive y puede
+utilizarse en la próxima iteración.
 
-Pasando la lista NEIGHBORS como mensaje al `map()`. El `reducer()` calcula la actualización del PageRank de una página concreta y pasa **sin modificar** NEIGHBORS.
+Si únicamente se emitieran contribuciones `RANK`, después de la primera pasada
+se conocerían los ranks nuevos, pero se perderían los enlaces salientes. La
+siguiente iteración ya no podría distribuir esos ranks.
 
-En caso de no incluirlo, después de la iteración inicial el bucle no sabría cómo repartir el PageRank de un nodo a sus nodos salientes.
----
+## 4. Manejo de nodos colgantes
 
-## 4. Manejo de dangling nodes
+Antes de cada llamada a `mapreduce()`, el bucle externo calcula la masa total de
+los nodos sin enlaces salientes:
 
-¿Qué haces con el rank de un nodo sin enlaces salientes? ¿Por qué? ¿Cómo afecta esto a la invariante de suma (Σ ranks ≈ 1.0)?
+```text
+dangling_mass = suma de los ranks de los nodos sin vecinos
+```
 
-En el bucle externo, antes de realizar el `map()`, sumo el rank de los dangling nodes y divido la suma por el total de elementos. Este sería el aporte relativo de cada dangling node. Luego en el `reduce()` incorporo este valor a la suma de aportes individuales de cada página.
+El reducer distribuye `dangling_mass / N` a cada nodo antes de aplicar el
+factor de amortiguación. Esta distribución uniforme evita que el rank de los
+nodos colgantes desaparezca y preserva la invariante:
 
----
+```text
+Σ rank(P) ≈ 1.0
+```
 
 ## 5. Iteración y convergencia
 
-- ¿Dónde vive el bucle de iteración? (fuera de `mapreduce()`)
-    En un archivo `exercises/02-mapreduce-pagerank/pagerank.py` que provee las funciones para serializar el archivo y la función de cálculo de `pagerank()`.
-- Criterio de convergencia (norma L1 < epsilon):
-    Un valor de tolerancia comentado frecuentemente en internet es de $10^{-6}$.
-- ¿Cómo comparas los ranks entre iteración N y N+1?
-    Almaceno en dos valores `global_pagerank` y `global_pagerank_new`.
+El bucle vive en `_run_pagerank()`, fuera de `mapreduce()`. En cada vuelta:
 
----
+1. Se guardan los ranks actuales en `old_ranks`.
+2. Se calcula `dangling_mass`.
+3. Se ejecuta una pasada Map–Shuffle–Reduce.
+4. La salida reducida se convierte en el nuevo estado.
+5. Se calcula la diferencia L1:
 
-## 6. Diagrama de una iteración
+```text
+L1 = Σ |new_rank(P) - old_rank(P)|
+```
+
+El proceso termina cuando `L1 < epsilon` o cuando alcanza `max_iter`. La
+configuración predeterminada usa `d = 0.85`, `epsilon = 10⁻⁶` y un máximo de 50
+iteraciones.
+
+## 6. Flujo de una iteración
 
 ![Diagrama de diseño de PageRank sobre MapReduce](diagram.png)
-
